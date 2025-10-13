@@ -27,3 +27,9 @@ variable "availability_zone" {
   description = "AWS availability zone"
   default     = "eu-central-1a"
 }
+
+variable "prefix" {
+  type        = string
+  description = "Prefix for resource names"
+  default     = "mine-tf"
+}

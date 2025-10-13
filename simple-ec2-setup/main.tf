@@ -6,7 +6,7 @@ resource "aws_vpc" "main" {
   enable_dns_hostnames = true
 
   tags = {
-    Name = "terraform-vpc"
+    Name = "${var.prefix}-vpc"
   }
 }
 
@@ -20,7 +20,7 @@ resource "aws_subnet" "main" {
   availability_zone       = var.availability_zone
 
   tags = {
-    Name = "terraform-subnet"
+    Name = "${var.prefix}-subnet"
   }
 }
 
@@ -31,7 +31,7 @@ resource "aws_internet_gateway" "gw" {
   vpc_id = aws_vpc.main.id
 
   tags = {
-    Name = "terraform-igw"
+    Name = "${var.prefix}-igw"
   }
 }
 
@@ -47,7 +47,7 @@ resource "aws_route_table" "rt" {
   }
 
   tags = {
-    Name = "terraform-rt"
+    Name = "${var.prefix}-rt"
   }
 }
 
@@ -89,7 +89,7 @@ resource "aws_security_group" "open_all" {
 # ------------------------------
 # Create or reference your own key pair to SSH in
 resource "aws_key_pair" "default" {
-  key_name   = "tf-ec2-key"
+  key_name   = "${var.prefix}-ec2-key"
   public_key = file(var.public_key) # ensure this file exists
 }
 
@@ -110,7 +110,7 @@ resource "aws_instance" "ubuntu" {
   }
 
   tags = {
-    Name = "Terraform-Ubuntu-Instance"
+    Name = "${var.prefix}-ubuntu-instance"
   }
 }
 
