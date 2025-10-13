@@ -1,13 +1,9 @@
-terraform {
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "5.81.0"
-    }
-  }
+resource "random_pet" "random_bucket_name" {
+  length = 2
 }
+
 resource "aws_s3_bucket" "public_bucket" {
-  bucket = var.bucket_name # must be globally unique
+  bucket = "${var.bucket_name}-${random_pet.random_bucket_name.id}" # must be globally unique
   tags = {
     Name = "${var.prefix}-s3-bucket"
   }
