@@ -15,3 +15,15 @@ variable "volume_size" {
   description = "Volume size in GB"
   default     = 40
 }
+
+variable "region" {
+  type        = string
+  description = "AWS region"
+  default     = "eu-central-1"
+}
+
+variable "availability_zone" {
+  type        = string
+  description = "AWS availability zone"
+  default     = "eu-central-1a"
+}
