@@ -17,47 +17,48 @@ resource "aws_s3_bucket_public_access_block" "lambda_bucket" {
   restrict_public_buckets = true
 }
 
-
-resource "aws_iam_role" "hello_lambda_exec" {
+resource "aws_iam_role" "lambda_exec" {
   name = "hello-lambda"
+  assume_role_policy = data.aws_iam_policy_document.lambda_bucket_policy.json
+}
 
-  assume_role_policy = <<POLICY
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "Service": "lambda.amazonaws.com"
-      },
-      "Action": "sts:AssumeRole"
+data "aws_iam_policy_document" "lambda_bucket_policy" {
+  version = "2012-10-17"
+  statement {
+    sid = "LambdaBucketAccess"
+    effect = "Allow"
+    actions = [
+      "sts:AssumeRole",
+    ]
+    principals {
+      type        = "Service"
+      identifiers = ["lambda.amazonaws.com"]
     }
-  ]
-}
-POLICY
+  }
 }
 
-resource "aws_iam_role_policy_attachment" "hello_lambda_policy" {
-  role       = aws_iam_role.hello_lambda_exec.name
+resource "aws_iam_role_policy_attachment" "lambda_policy" {
+  role       = aws_iam_role.lambda_exec.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
-resource "aws_lambda_function" "hello" {
-  function_name = "hello"
+resource "aws_lambda_function" "lambda" {
+  function_name = var.lambda_name
+  # filename         = data.archive_file.lambda_hello.output_path
 
   s3_bucket = aws_s3_bucket.lambda_bucket.id
-  s3_key    = aws_s3_object.lambda_hello.key
+  s3_key    = aws_s3_object.lambda.key
+  handler       = "index.handler"
+  runtime       = "nodejs20.x"
 
-  runtime = "nodejs16.x"
-  handler = "function.handler"
 
   source_code_hash = data.archive_file.lambda_hello.output_base64sha256
 
-  role = aws_iam_role.hello_lambda_exec.arn
+  role = aws_iam_role.lambda_exec.arn
 }
 
-resource "aws_cloudwatch_log_group" "hello" {
-  name = "/aws/lambda/${aws_lambda_function.hello.function_name}"
+resource "aws_cloudwatch_log_group" "lambda" {
+  name = "/aws/lambda/${aws_lambda_function.lambda.function_name}"
 
   retention_in_days = 1
 }
@@ -65,15 +66,75 @@ resource "aws_cloudwatch_log_group" "hello" {
 data "archive_file" "lambda_hello" {
   type = "zip"
 
-  source_dir  = "../${path.module}/hello"
-  output_path = "../${path.module}/hello.zip"
+  source_dir  = "${path.module}/lambda-js"
+  output_path = "${path.module}/lambda-js.zip"
 }
 
-resource "aws_s3_object" "lambda_hello" {
+resource "aws_s3_object" "lambda" {
   bucket = aws_s3_bucket.lambda_bucket.id
 
-  key    = "hello.zip"
+  key    = "lambda-js.zip"
   source = data.archive_file.lambda_hello.output_path
 
   etag = filemd5(data.archive_file.lambda_hello.output_path)
+}
+
+resource "aws_apigatewayv2_api" "main" {
+  name          = "main"
+  protocol_type = "HTTP"
+}
+
+resource "aws_apigatewayv2_stage" "dev" {
+  api_id = aws_apigatewayv2_api.main.id
+
+  name        = "dev"
+  auto_deploy = true
+
+  access_log_settings {
+    destination_arn = aws_cloudwatch_log_group.main_api_gw.arn
+
+    format = jsonencode({
+      requestId               = "$context.requestId"
+      sourceIp                = "$context.identity.sourceIp"
+      requestTime             = "$context.requestTime"
+      protocol                = "$context.protocol"
+      httpMethod              = "$context.httpMethod"
+      resourcePath            = "$context.resourcePath"
+      routeKey                = "$context.routeKey"
+      status                  = "$context.status"
+      responseLength          = "$context.responseLength"
+      integrationErrorMessage = "$context.integrationErrorMessage"
+    }
+    )
+  }
+}
+
+resource "aws_cloudwatch_log_group" "main_api_gw" {
+  name = "/aws/api-gw/${aws_apigatewayv2_api.main.name}"
+
+  retention_in_days = 1
+}
+
+resource "aws_apigatewayv2_integration" "lambda_apigateway" {
+  api_id = aws_apigatewayv2_api.main.id
+
+  integration_uri    = aws_lambda_function.lambda.invoke_arn
+  integration_type   = "AWS_PROXY"
+  integration_method = "POST"
+}
+
+resource "aws_apigatewayv2_route" "get_hello" {
+  api_id = aws_apigatewayv2_api.main.id
+
+  route_key = "$default"
+  target    = "integrations/${aws_apigatewayv2_integration.lambda_apigateway.id}"
+}
+
+resource "aws_lambda_permission" "api_gw" {
+  statement_id  = "AllowExecutionFromAPIGateway"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.lambda.function_name
+  principal     = "apigateway.amazonaws.com"
+
+  source_arn = "${aws_apigatewayv2_api.main.execution_arn}/*/*"
 }
